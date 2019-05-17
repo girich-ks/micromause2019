@@ -17,30 +17,30 @@
 // const byte motor_right_pinB = A3;
 // const byte motor_right_pinE = A5;
 
-const byte motor_left_pinA = 4;
-const byte motor_left_pinB = 3;
-const byte motor_left_pinE = 5;
-const byte motor_right_pinA = 7;
+const byte motor_left_pinA = 12;
+const byte motor_left_pinB = 14;
+const byte motor_left_pinE = 9;
+const byte motor_right_pinA = 2;
 const byte motor_right_pinB = 8;
-const byte motor_right_pinE = 6;
+const byte motor_right_pinE = 3;
 
 Motor motorLeft(motor_left_pinA, motor_left_pinE, motor_left_pinB); // создать мотор
 Motor motorRight(motor_right_pinA, motor_right_pinE, motor_right_pinB); // создать мотор
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //#2 датчики
-const byte left_senor_pin = A0; // пин левого ик-датчика
-const byte mid_senor_pin = A1; // пин центрального ик-датчика
-const byte right_senor_pin = A2; // пин правого датчика
+const byte left_senor_pin = A6; // 20й пин левого ик-датчика
+const byte mid_senor_pin = A5; // 19й пин центрального ик-датчика
+const byte right_senor_pin = A4; // 18й пин правого датчика
 SharpDistSensor left_sensor(left_senor_pin);
 SharpDistSensor mid_sensor(mid_senor_pin);
 SharpDistSensor right_sensor(right_senor_pin);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-const byte encode_left_pin1 = 9;
-const byte encode_left_pin2 = 10;
-const byte encode_right_pin1 = 11;
-const byte encode_right_pin2 = 12;
+const byte encode_left_pin1 = 4;
+const byte encode_left_pin2 = 5;
+const byte encode_right_pin1 = 6;
+const byte encode_right_pin2 = 7; //возможно здесь я перепутал пины левого энкодера с правым
 OptoPara optoPara;
 
 // Encod_er encode_left1(encode_left_pin1, encode_left_pin2, 3);
@@ -64,6 +64,26 @@ ECommand command = EC_None;
 long long command_time;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 void setup() {
+pinMode(2, OUTPUT);//in1 for motor1
+pinMode(3, OUTPUT);// enable motor1
+pinMode(4, INPUT);// encoder(A) from motor1
+pinMode(5, INPUT);// encoder(B) from motor1
+pinMode(6, INPUT);// encoder(A) from motor1
+pinMode(7, INPUT);// encoder(B) from motor1
+pinMode(8, OUTPUT);//in2 for motor1
+pinMode(9, OUTPUT);// enable motor2
+pinMode(10, INPUT);// button right
+pinMode(11, INPUT_PULLUP);// button left
+pinMode(12, OUTPUT);// in4 for motor2
+pinMode(13, OUTPUT);// led pin
+pinMode(14, OUTPUT);// pinA0 // in3 for motor2
+pinMode(15, INPUT);// pinA1 // switch(right) for чего-нибудь/ если его включить, то на А1 будет подаваться Vin (7.2В)
+pinMode(16, INPUT);// pinA2 // compas (now not connection)
+pinMode(17, INPUT);// pinA3 // compas (now not connection)
+pinMode(18, INPUT);// pinA4 // IR-sensor Right
+pinMode(19, INPUT);// pinA5 // IR-sensor Center
+pinMode(20, INPUT);// pinA6 // IR-sensor Left
+  
   Serial.begin(9600);
   left_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
   mid_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
@@ -76,14 +96,16 @@ void setup() {
   // motorLeft.setSpeed(200);
   // motorRight.setSpeed(200);
   moveModule = MoveModule(&optoPara, &motorLeft, &motorRight);
-  pinMode(17, OUTPUT);
-  pinMode(A5, INPUT);
+  
+ //pinMode(17, OUTPUT); осталось от предыдущей версии
+  pinMode(A5, INPUT);  // понянять! Борис, откуда планировалось получать значения на А5?
+  
   moveModule.set_max_speed(190);
-  if (!digitalRead(A5)) return;
+  if (!digitalRead(A5)) return; //зачем это условие?
 //   moveModule.move(112, 1.0);
 //    motorLeft.goForward();
 //    motorRight.goForward();
-  pinMode(13, OUTPUT);
+  
 }
 
 int k = 1;
