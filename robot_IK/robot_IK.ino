@@ -1,25 +1,27 @@
 
 /*robot_IK.ino
 */
-#include "SharpDistSensor.h"
+#include <SharpDistSensor.h>
+//#include <SimpleKalmanFilter.h>
 #include "motor.h"
 //#include "graph.h"
-#include "sensors.h"
+//#include "sensors.h"
 #include "CRegulator.h"
 
+//#define PRINT_IN_READ
+//#define KALMAN_FILTER
+
 #define DIST_TO_WALL 3 // стандартное расстояние до стены, которое нужно поддерживать 
+#define MAX_IR_DIST 19.0 // максимальное расстояние, определяемое ИК датчиком
+//#define MEAS_ACTUAL_DURATION 500 // время в миллисекундах, в течение которого измерение считается актальным
+#define WALL_DIST 9 // Порог определения стены
+#define MAX_WHEEL_SPEED 80
 
-///////////////////////////////////////////////////////////////////////////////////////////////
-// const byte motor_left_pinA = A0;
-// const byte motor_left_pinB = A1;
-// const byte motor_left_pinE = A4;
-// const byte motor_right_pinA = A2;
-// const byte motor_right_pinB = A3;
-// const byte motor_right_pinE = A5;
-
+/* -------------------------------------  Распиновка моторов   ------------------------------*/
 const byte motor_left_pinA = 12;
 const byte motor_left_pinB = 14;
 const byte motor_left_pinE = 9;
+
 const byte motor_right_pinA = 2;
 const byte motor_right_pinB = 8;
 const byte motor_right_pinE = 3;
@@ -28,25 +30,33 @@ Motor motorLeft(motor_left_pinA, motor_left_pinE, motor_left_pinB); // созд�
 Motor motorRight(motor_right_pinA, motor_right_pinE, motor_right_pinB); // создать мотор
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-//#2 датчики
-const byte left_senor_pin = A6; // 20й пин левого ик-датчика
+//#2 ИК-датчики
+const byte left_senor_pin = A4; // 20й пин левого ик-датчика
 const byte mid_senor_pin = A5; // 19й пин центрального ик-датчика
-const byte right_senor_pin = A4; // 18й пин правого датчика
-SharpDistSensor left_sensor(left_senor_pin);
-SharpDistSensor mid_sensor(mid_senor_pin);
-SharpDistSensor right_sensor(right_senor_pin);
+const byte right_senor_pin = A6; // 18й пин правого датчика
+
+// Window size of the median filter (odd number, 1 = no filtering)
+const byte medianFilterWindowSize = 1;
+SharpDistSensor left_sensor(left_senor_pin, medianFilterWindowSize);  
+SharpDistSensor mid_sensor(mid_senor_pin, medianFilterWindowSize);
+SharpDistSensor right_sensor(right_senor_pin, medianFilterWindowSize);
+
+// Create the Kalman instances
+// Третий аргумент должен соответствовать продолжительности работы одной итерации loop()
+#ifdef KALMAN_FILTER
+  SimpleKalmanFilter kalmanIRSensorDistLeft(5, 5, 0.1); 
+  SimpleKalmanFilter kalmanIRSensorDistMiddle(5, 5, 0.1);
+  SimpleKalmanFilter kalmanIRSensorDistRight(5, 5, 0.1);
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-const byte encode_left_pin1 = 4;
-const byte encode_left_pin2 = 5;
-const byte encode_right_pin1 = 6;
-const byte encode_right_pin2 = 7; //возможно здесь я перепутал пины левого энкодера с правым
-OptoPara optoPara;
+const byte encoder_right_pin1 = 4;
+const byte encoder_right_pin2 = 5;
+const byte encoder_left_pin1 = 6;
+const byte encoder_left_pin2 = 7;
 
-// Encod_er encode_left1(encode_left_pin1, encode_left_pin2, 3);
-// Encod_er encode_right1(encode_right_pin1, encode_right_pin2, 3);
-// Encoder encode_left(encode_left_pin1, encode_left_pin2);
-// Encoder encode_right(encode_right_pin2, encode_right_pin1);
+//CEncoder right_encoder;
+CEncoder left_encoder;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 MoveModule moveModule;
@@ -62,335 +72,190 @@ enum ECommand
 
 ECommand command = EC_None;
 long long command_time;
-///////////////////////////////////////////////////////////////////////////////////////////////
+
 void setup() {
-pinMode(2, OUTPUT);//in1 for motor1
-pinMode(3, OUTPUT);// enable motor1
-pinMode(4, INPUT);// encoder(A) from motor1
-pinMode(5, INPUT);// encoder(B) from motor1
-pinMode(6, INPUT);// encoder(A) from motor1
-pinMode(7, INPUT);// encoder(B) from motor1
-pinMode(8, OUTPUT);//in2 for motor1
-pinMode(9, OUTPUT);// enable motor2
-pinMode(10, INPUT);// button right
-pinMode(11, INPUT_PULLUP);// button left
-pinMode(12, OUTPUT);// in4 for motor2
-pinMode(13, OUTPUT);// led pin
-pinMode(14, OUTPUT);// pinA0 // in3 for motor2
-pinMode(15, INPUT);// pinA1 // switch(right) for чего-нибудь/ если его включить, то на А1 будет подаваться Vin (7.2В)
-pinMode(16, INPUT);// pinA2 // compas (now not connection)
-pinMode(17, INPUT);// pinA3 // compas (now not connection)
-pinMode(18, INPUT);// pinA4 // IR-sensor Right
-pinMode(19, INPUT);// pinA5 // IR-sensor Center
-pinMode(20, INPUT);// pinA6 // IR-sensor Left
   
-  Serial.begin(9600);
+  pinMode(2, OUTPUT);//in1 for motor1
+  pinMode(3, OUTPUT);// enable motor1
+  pinMode(encoder_left_pin1, INPUT);  // pin #4 - encoder(A) from motor1 // TEST (_!_)
+  pinMode(encoder_left_pin2, INPUT);  // pin #5 - encoder(B) from motor1
+  pinMode(encoder_right_pin1, INPUT); // pin #6 - encoder(A) from motor2
+  pinMode(encoder_right_pin2, INPUT); // pin #7 - encoder(B) from motor2
+  pinMode(8, OUTPUT);//in2 for motor1
+  pinMode(9, OUTPUT);// enable motor2
+  pinMode(10, INPUT);// button right
+  pinMode(11, INPUT_PULLUP);// button left
+  pinMode(12, OUTPUT);// in4 for motor2
+  pinMode(13, OUTPUT);// led pin
+  pinMode(14, OUTPUT);// pinA0 // in3 for motor2
+  pinMode(15, INPUT);// pinA1 // switch(right) for чего-нибудь/ если его включить, то на А1 будет подаваться Vin (7.2В)
+  pinMode(16, INPUT);// pinA2 // compas (now not connection)
+  pinMode(17, INPUT);// pinA3 // compas (now not connection)
+  pinMode(18, INPUT);// pinA4 // IR-sensor Right
+  pinMode(19, INPUT);// pinA5 // IR-sensor Center
+  pinMode(20, INPUT);// pinA6 // IR-sensor Left
+    
+  Serial.begin(115200);
   left_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
   mid_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
   right_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
-  // encode_left.read();
-  // encode_right.read();
-  optoPara = OptoPara(encode_left_pin1, encode_right_pin1, 1.0, 1);
-  // motorLeft.goForward();
-  // motorRight.goForward();
-  // motorLeft.setSpeed(200);
-  // motorRight.setSpeed(200);
-  moveModule = MoveModule(&optoPara, &motorLeft, &motorRight);
-  
- //pinMode(17, OUTPUT); осталось от предыдущей версии
-  pinMode(A5, INPUT);  // понянять! Борис, откуда планировалось получать значения на А5?
-  
-  moveModule.set_max_speed(190);
-  if (!digitalRead(A5)) return; //зачем это условие?
-//   moveModule.move(112, 1.0);
-//    motorLeft.goForward();
-//    motorRight.goForward();
-  
+
+//  right_encoder = CEncoder("RightWheel", encoder_right_pin1, encoder_right_pin2, 1.0, 1);  
+  left_encoder = CEncoder("LeftWheel", encoder_left_pin1, encoder_left_pin2, 1.0, 1);
+
+  moveModule = MoveModule(&left_encoder, &motorLeft, &motorRight);  
+  moveModule.set_max_speed(MAX_WHEEL_SPEED);
+
+  moveModule.move(10, 1.0);
+
 }
 
-int k = 1;
+
+
+//int k = 1;
 long last_time = 0;
-double last_dist = 0;
-double left_dist = 19;
-double mid_dist = 19;
-double right_dist = 19;
-bool l_flag = false;
-bool r_flag = false;
+//double last_dist = 0;
+double left_dist = MAX_IR_DIST;
+double mid_dist = MAX_IR_DIST;
+double right_dist = MAX_IR_DIST;
+//bool l_flag = false;
+//bool r_flag = false;
 
-void stabilisation(){
-  if (millis() - last_time > 1){
-    left_dist = left_sensor.getDist()/10.0;
-    mid_dist = mid_sensor.getDist()/10.0;
-    right_dist = right_sensor.getDist()/10.0;
+
+//int ir_print_count = 0;
+
+
+
+C_PID_Regulator sideRegul(2, 0, 0);
+//
+//bool is_stop = false;
+//
+int loop_count = 0;
+//int mes_count = 0;
+//long long count_time = millis();
+
+void loop()
+{
+ 
+  loop_count++;
+
+//  motorLeft.goForward();
+//  motorRight.goForward();
+
+//  right_encoder.loop();
+  left_encoder.loop();
+
+  // Формирование показаний датчиков
+  read_sensor_data();
+//print_ir_raw_data();
+
+moveModule.loop();
+
+  // вывод данных на ПК с определенной частотой
+  if (millis() - last_time > 1000)
+  {
     last_time = millis();
-      // Serial.print((left_dist));
-      // Serial.print(" ");
-      // Serial.println(right_dist);
+//    print_ir_raw_data();
+//    print_ir_dists();
+
+//    Serial.print((int)left_encoder.count1);
+//    Serial.print("\t");
+//    Serial.print((int)left_encoder.count2);
+//    Serial.println("\t left encoder");
+//
+//    Serial.print((int)right_encoder.count1);
+//    Serial.print("\t");
+//    Serial.print((int)right_encoder.count2);
+//    Serial.println("\t right encoder");
+    
+//    Serial.print("loop count ");
+//    Serial.println(loop_count);
+    loop_count = 0;
   }
-  // Serial.print(left_dist);
+
   return;
+  
+  if (right_dist < WALL_DIST && left_dist < WALL_DIST)
+  {
+    digitalWrite(13, LOW);  
+    if (mid_dist > WALL_DIST)
+    {
+      moveModule.move(100, 1.0);
+//      Serial.println("only FORWARD!");
+    }
+    else
+    {
+      moveModule.rotate(180);
+//      Serial.println("go BACK");
+    }
+  } 
+  else if (right_dist > WALL_DIST && left_dist > WALL_DIST) {
+    digitalWrite(13, LOW);  
+    moveModule.move(100, 1.0);
+//    Serial.println("I'm free to head :)"); 
+  }
+//  else if (right_dist > WALL_DIST)
+//  {
+//    digitalWrite(13, HIGH);
+//    moveModule.rotate_right();     
+//    command = EC_Rotate_Right;
+////    Serial.println("Turn to RIGHT");
+//  }
+//  else if (left_dist > WALL_DIST)
+//  {
+//    digitalWrite(13, HIGH);
+//    moveModule.rotate_left();
+//    command = EC_Rotate_Left;
+////    Serial.println("Turn to LEFT");
+//  }
+  
+  moveModule.loop();
+    
+} // loop()
+
+// Считывает даные с ИК-датчиков расстояния и выводит на моитор.
+void read_sensor_data()
+{
+#ifdef KALMAN_FILTER
+    left_dist = kalmanIRSensorDistLeft.updateEstimate(left_sensor.getDist()/10.0);
+#else
+    left_dist = left_sensor.getDist()/10.0;
+#endif
+
+#ifdef KALMAN_FILTER
+    mid_dist = kalmanIRSensorDistMiddle.updateEstimate(mid_sensor.getDist()/10.0);
+#else
+    mid_dist = mid_sensor.getDist()/10.0;
+#endif
+
+#ifdef KALMAN_FILTER
+    right_dist = kalmanIRSensorDistRight.updateEstimate(right_sensor.getDist()/10.0);
+#else
+    right_dist = right_sensor.getDist()/10.0;
+#endif   
 }
 
-void print_dists()
+void print_ir_dists()
 {
-  
   Serial.print(left_dist);
   Serial.print("\t");
   Serial.print(mid_dist);
   Serial.print("\t");
-  Serial.println(right_dist);
+  Serial.print(right_dist);
+  Serial.println();
 }
 
-// C_PID_Regulator leftRegul(100, 0, 0);
-// C_PID_Regulator rightRegul(100, 0, 0);
-
-C_PID_Regulator sideRegul(2, 0, 0);
-
-bool is_stop = false;
-
-int loop_count = 0;
-int mes_count = 0;
-long long count_time = millis();
-
-void loop()
+void print_ir_raw_data()
 {
-  motorLeft.goForward();
-  motorRight.goForward();
-      
-  loop_count++;
-
-//  Serial.println("Hello!");
- 
-//  motorLeft.setSpeed(70);
-//  motorRight.setSpeed(70);
-//  return;
-    // stabilisation();
-   //print_dists();
-
-  // char* message = "";
-  // switch (moveModule.status)
-  // {
-  //   case MM_NONE:
-  //     message = "None";
-  //     break;
-  //   case MM_STOP:
-  //     message = "Stop";
-  //     break;
-  //   case MM_MOVE:
-  //     message = "Move";
-  //     break;
-  //   case MM_ROTATE:
-  //     message = "Rotate";
-  //     break;
-  // }
-  // Serial.println(message);
-
-
-  // if (moveModule.status != MoveModuleStatus::MM_NONE && moveModule.status != MoveModuleStatus::MM_STOP)
-  //   return;
-
-  // if (command != EC_None)
-  // {
-  //   if (command == EC_Rotate_Right)
-  //     moveModule.rotate_right();
-  //   else if (command == EC_Rotate_Left)
-  //     moveModule.rotate_left();
-  //   command = EC_None;
-  //   return;
-  // }
-
-   // if (mid_dist < 10)
-   // {
-   //  motorLeft.setSpeed(0);
-   //  motorRight.setSpeed(0);
-   //  return;
-   // }
-//
-   optoPara.loop();
-   moveModule.loop();
-
-//   Serial.print(moveModule.status);
-//
-//    if (!is_stop)
-//    {
-//      moveModule.rotate_left();
-//      Serial.println("Rotate left");
-//      is_stop = true;
-//    }
-//
-//    return;
-
-   
-//
-//    if (moveModule.status == MM_ROTATE)
-//    {
-//      Serial.println("ROTATE");
-//      return;
-//    }
-
-  if (right_dist > 13)
-  {
-//     moveModule.move(2, 1);
-
-//     delay(2000); 
-     
-     moveModule.rotate_right();     
-    
-    // moveModule.move(2, 1);
-//     command_time = millis();
-     command = EC_Rotate_Right;
-//    motorLeft.setSpeed(0);
-//    motorRight.setSpeed(0);
-
-//    Serial.println("right");
-//    return;
-  }
-  else if (left_dist > 13)
-  {
-
-//    motorLeft.setSpeed(0);
-//    motorRight.setSpeed(0);
-    digitalWrite(13, HIGH);
-//    is_stop = true;
-//    moveModule.move(2, 1);
-
-//     delay(1000); 
-    moveModule.rotate_left();
-//    Serial.println("left");    
-//    digitalWrite(3, LOW);
-//    digitalWrite(4, HIGH);
-//    digitalWrite(5, HIGH);
-//    digitalWrite(7, LOW);
-//    digitalWrite(8, HIGH);
-//    digitalWrite(6, HIGH);
-//    delay(100);
-//    digitalWrite(3, LOW);
-//    digitalWrite(4, LOW);
-//    digitalWrite(5, LOW);
-//    digitalWrite(7, LOW);
-//    digitalWrite(8, LOW);
-//    digitalWrite(6, LOW);
-//
-//    digitalWrite(3, LOW);
-//    digitalWrite(4, HIGH);
-//    digitalWrite(5, HIGH);
-//    digitalWrite(7, HIGH);
-//    digitalWrite(8, LOW);
-//    digitalWrite(6, HIGH);
-//    delay(100);
-//
-//    digitalWrite(3, LOW);
-//    digitalWrite(4, LOW);
-//    digitalWrite(5, LOW);
-//    digitalWrite(7, LOW);
-//    digitalWrite(8, LOW);
-//    digitalWrite(6, LOW);
-
-
-    // moveModule.move(2, 1);
-    // command_time = millis();
-     command = EC_Rotate_Left;
-//     return;
-  }
-  else    
-    digitalWrite(13, LOW);   
-
-//    if (moveModule.status == MM_STOP)
-//    {
-//       if (command != EC_None)
-//       {
-//         if (command == EC_Rotate_Right)
-//           moveModule.rotate_right();
-//         else if (command == EC_Rotate_Left)
-//           moveModule.rotate_left();
-//         command = EC_None;
-//         moveModule.status = MM_NONE;
-//       }
-//    }
-
-
-    if (/*moveModule.status == MM_NONE &&*/ millis() - last_time > 1)
-    {
-      mes_count++;
-      
-      left_dist = left_sensor.getDist()/10.0;
-      mid_dist = mid_sensor.getDist()/10.0;
-      right_dist = right_sensor.getDist()/10.0;
-
-      
-      // float leftError = left_dist - DIST_TO_WALL;
-      // float rightError = right_dist - DIST_TO_WALL;
-      float sideError = right_dist - left_dist;
-      float deltaTime = millis() - last_time;
-      // float lSpeed = leftRegul.calculate(leftError, deltaTime);
-      // float rSpeed = rightRegul.calculate(rightError, deltaTime);
-      // lSpeed = _saturation(lSpeed, 140.0);
-      // rSpeed = _saturation(rSpeed, 140.0);
-      float sideValue = sideRegul.calculate(sideError, deltaTime);
-
-      float satValue = 25;
-      sideValue = _saturation(sideValue, satValue);
-
-     last_time = millis();
-
-  //    double leftSpeed = 180 - El*kl;
-  //    double rightSpeed = 180 + El*kl; 
-
-      float lSpeed = 160 - sideValue;
-      float rSpeed = 160 + sideValue;
-
-      if (sideValue > satValue - 1)
-      {
-        rSpeed = 40;
-        lSpeed = 200;
-      }
-      if (sideValue < -satValue + 1)
-      {
-        lSpeed = 40;
-        rSpeed = 200;
-      }
-     
-      motorLeft.setSpeed(lSpeed);
-      motorRight.setSpeed(rSpeed);
-//
-      Serial.print(mid_dist);
-      Serial.print("\t");
-      Serial.print(sideError);
-      Serial.print("\t");
-      Serial.print(sideValue);
-      Serial.print("\t");
-      Serial.print(lSpeed);
-      Serial.print("\t");
-      Serial.println(rSpeed);
-     
-    //  motorLeft.setSpeed(180 - Er*kr);
-    //  motorRight.setSpeed(180 + Er*kr);
-    
-  }
-  // if (left_dist < 4.5){
-  //   motorLeft.setSpeed();
-  // }
-  // if (right_dist < 3.5){
-  //   motorRight.set_scale(1/1.01);
-  // }
-
-  // if (moveModule.ready()){
-  //   if (k == 1){
-  //     moveModule.move(69, 1.0);
-  //     k++;
-  //     return;
-  //   }
-  // }
-
-  // if (millis() - count_time > 1000)
-  // {
-  //   Serial.print(mes_count);
-  //   Serial.print("\t");
-  //   Serial.println(loop_count);
-  //   mes_count = 0;
-  //   loop_count = 0;
-  //   count_time = millis();
-  // }
+//  analogRead(left_senor_pin);
+//  analogRead(mid_senor_pin);
+//  analogRead(right_senor_pin);
+  Serial.print(analogRead(left_senor_pin));
+  Serial.print("\t");
+  Serial.print(analogRead(mid_senor_pin));
+  Serial.print("\t");
+  Serial.print(analogRead(right_senor_pin));
+  Serial.println();
 }
 
 float _saturation(const float x, const float value)
