@@ -13,11 +13,11 @@ CEncoder::CEncoder(String _name, int pin1, int pin2, float round_length, int poi
   last_state1 = digitalRead(pin1);
   last_state2 = digitalRead(pin2);
 
-  Serial.print(left_or_right);
-  Serial.print("\t FIRST state is ");
-  Serial.print(last_state1);
-  Serial.print("\t&\t SECOND state is ");
-  Serial.println(last_state2);
+//  Serial.print(left_or_right);
+//  Serial.print("\t FIRST state is ");
+//  Serial.print(last_state1);
+//  Serial.print("\t&\t SECOND state is ");
+//  Serial.println(last_state2);
   get_direction();
 }
 
@@ -29,13 +29,13 @@ void CEncoder::loop(){
   if (current_state1 != last_state1){
     count1++;
 //    Serial.print(left_or_right);
-    Serial.print("FIRST is changed to ");
-    Serial.print(current_state1);
+//    Serial.print("FIRST is changed to ");
+//    Serial.print(current_state1);
     
     rotate_direction = ((last_state1 != last_state2) ? EED_FORWARD : EED_BACKWARD);
 
-    Serial.print(" --> ");
-    get_direction();
+//    Serial.print(" --> ");
+//    get_direction();
     
     last_state1 = current_state1;  
   }
@@ -44,13 +44,13 @@ void CEncoder::loop(){
     count2++;
 //    Serial.print("\t\t\t\t\t");
 //    Serial.print(left_or_right);
-    Serial.print("\t\t\t\t\t SECOND is changed to ");
-    Serial.print(current_state2);
+//    Serial.print("\t\t\t\t\t SECOND is changed to ");
+//    Serial.print(current_state2);
 
     rotate_direction = (last_state1 == last_state2 ? EED_FORWARD : EED_BACKWARD);
 //    rotate_direction = EED_BACKWARD;
-    Serial.print(" --> ");
-    get_direction();
+//    Serial.print(" --> ");
+//    get_direction();
         
     last_state2 = current_state2;  
   }

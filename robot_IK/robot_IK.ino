@@ -35,6 +35,10 @@ const byte left_senor_pin = A4; // 20й пин левого ик-датчика
 const byte mid_senor_pin = A5; // 19й пин центрального ик-датчика
 const byte right_senor_pin = A6; // 18й пин правого датчика
 
+// датчики линии
+const byte left_line_follower_pin = A3; // 26-й пин левого датчика движения по линии
+const byte right_line_follower_pin = 13; // 16-й пин правого датчика движения по линии
+
 // Window size of the median filter (odd number, 1 = no filtering)
 const byte medianFilterWindowSize = 1;
 SharpDistSensor left_sensor(left_senor_pin, medianFilterWindowSize);  
@@ -55,7 +59,7 @@ const byte encoder_right_pin2 = 5;
 const byte encoder_left_pin1 = 6;
 const byte encoder_left_pin2 = 7;
 
-//CEncoder right_encoder;
+CEncoder right_encoder;
 CEncoder left_encoder;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -74,7 +78,7 @@ ECommand command = EC_None;
 long long command_time;
 
 void setup() {
-  
+  pinMode(1, INPUT);
   pinMode(2, OUTPUT);//in1 for motor1
   pinMode(3, OUTPUT);// enable motor1
   pinMode(encoder_left_pin1, INPUT);  // pin #4 - encoder(A) from motor1 // TEST (_!_)
@@ -86,7 +90,7 @@ void setup() {
   pinMode(10, INPUT);// button right
   pinMode(11, INPUT_PULLUP);// button left
   pinMode(12, OUTPUT);// in4 for motor2
-  pinMode(13, OUTPUT);// led pin
+  pinMode(13, INPUT);// 
   pinMode(14, OUTPUT);// pinA0 // in3 for motor2
   pinMode(15, INPUT);// pinA1 // switch(right) for чего-нибудь/ если его включить, то на А1 будет подаваться Vin (7.2В)
   pinMode(16, INPUT);// pinA2 // compas (now not connection)
@@ -94,6 +98,8 @@ void setup() {
   pinMode(18, INPUT);// pinA4 // IR-sensor Right
   pinMode(19, INPUT);// pinA5 // IR-sensor Center
   pinMode(20, INPUT);// pinA6 // IR-sensor Left
+  pinMode(21, INPUT);
+  pinMode(22, INPUT);
     
   Serial.begin(115200);
   left_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
@@ -106,7 +112,7 @@ void setup() {
   moveModule = MoveModule(&left_encoder, &motorLeft, &motorRight);  
   moveModule.set_max_speed(MAX_WHEEL_SPEED);
 
-  moveModule.move(10, 1.0);
+//  moveModule.move(10, 1.0);
 
 }
 
@@ -149,7 +155,10 @@ void loop()
   read_sensor_data();
 //print_ir_raw_data();
 
-moveModule.loop();
+//  int d13 = digitalRead(13);
+//  Serial.println(d13);
+
+
 
   // вывод данных на ПК с определенной частотой
   if (millis() - last_time > 1000)
@@ -171,7 +180,31 @@ moveModule.loop();
 //    Serial.print("loop count ");
 //    Serial.println(loop_count);
     loop_count = 0;
+
+// движение по полосе
+    int leftLF = digitalRead(left_line_follower_pin);
+    int rightLF = digitalRead(right_line_follower_pin);
+  
+    Serial.print(leftLF);
+    Serial.print("\t");
+    Serial.println(rightLF);
+    moveModule.turn_left();
+  
+    if (leftLF == LOW && rightLF == LOW)
+      moveModule.move(10, 1.0);
+    else if (leftLF == HIGH && rightLF == HIGH)
+      moveModule.move_back(1, 1.0); 
+    else if (leftLF == LOW && rightLF == HIGH)
+      moveModule.turn_right();
+    else if (leftLF == HIGH && rightLF == LOW)
+      moveModule.turn_left();
+  
+    moveModule.loop();
+    delay(100);
   }
+
+  moveModule.hard_stop();
+  moveModule.loop();
 
   return;
   

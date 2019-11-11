@@ -136,11 +136,11 @@ void MoveModule::loop(){
         return;
       }
       if (dist_l > dist_r){
-        motorLeft->setSpeed(max_speed/2);
+        motorLeft->setSpeed(max_speed/10);
         motorRight->setSpeed(max_speed);
       }
       if (dist_l < dist_r){
-        motorRight->setSpeed(max_speed/2);
+        motorRight->setSpeed(max_speed/10);
         motorLeft->setSpeed(max_speed);
       }
       break;
