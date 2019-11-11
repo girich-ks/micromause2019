@@ -5,7 +5,17 @@
 #include "CEncoder.h"
 
 enum MotorDirection {MD_NONE, MD_STOP, MD_FORWARD, MD_LEFT, MD_RIGHT, MD_BACK};
-enum MoveModuleStatus {MM_NONE, MM_STOP, MM_MOVE, MM_ROTATE, MM_TURN};
+enum MoveModuleStatus {MM_NONE, MM_STOP, MM_MOVE, MM_MOVE_DIST, MM_ROTATE, MM_TURN};
+enum MovementDirection {
+  MMD_NONE,  
+  MMD_FORWARD, 
+  MMD_TURN_LEFT, 
+  MMD_TURN_RIGHT, 
+  MMD_ROTATE_LEFT, 
+  MMD_ROTATE_RIGHT, 
+  MMD_BACKWARD,
+  MMD_STOP
+};
 
 class Motor;
 class CEncoder;
@@ -46,6 +56,8 @@ public:
   void loop();
   void setup();
   void move(double distance, double scale);
+
+  void move_forward();
   void move_back(double distance, double scale);
   void hard_stop();
   void rotate(double angle);

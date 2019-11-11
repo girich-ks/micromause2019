@@ -15,7 +15,7 @@
 #define MAX_IR_DIST 19.0 // максимальное расстояние, определяемое ИК датчиком
 //#define MEAS_ACTUAL_DURATION 500 // время в миллисекундах, в течение которого измерение считается актальным
 #define WALL_DIST 9 // Порог определения стены
-#define MAX_WHEEL_SPEED 80
+#define MAX_WHEEL_SPEED 110
 
 /* -------------------------------------  Распиновка моторов   ------------------------------*/
 const byte motor_left_pinA = 12;
@@ -36,8 +36,8 @@ const byte mid_senor_pin = A5; // 19й пин центрального ик-да
 const byte right_senor_pin = A6; // 18й пин правого датчика
 
 // датчики линии
-const byte left_line_follower_pin = A3; // 26-й пин левого датчика движения по линии
-const byte right_line_follower_pin = 13; // 16-й пин правого датчика движения по линии
+const byte left_line_follower_pin = A3; // 17-й пин левого датчика движения по линии
+const byte right_line_follower_pin = 13; // 13-й пин правого датчика движения по линии
 
 // Window size of the median filter (odd number, 1 = no filtering)
 const byte medianFilterWindowSize = 1;
@@ -64,7 +64,8 @@ CEncoder left_encoder;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 MoveModule moveModule;
-
+MovementDirection last_move_cmd = MMD_NONE;
+int confused_threshold = 0;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 enum ECommand
@@ -81,10 +82,10 @@ void setup() {
   pinMode(1, INPUT);
   pinMode(2, OUTPUT);//in1 for motor1
   pinMode(3, OUTPUT);// enable motor1
-  pinMode(encoder_left_pin1, INPUT);  // pin #4 - encoder(A) from motor1 // TEST (_!_)
-  pinMode(encoder_left_pin2, INPUT);  // pin #5 - encoder(B) from motor1
-  pinMode(encoder_right_pin1, INPUT); // pin #6 - encoder(A) from motor2
-  pinMode(encoder_right_pin2, INPUT); // pin #7 - encoder(B) from motor2
+  pinMode(encoder_right_pin1, INPUT); // pin #4 - encoder(A) from right motor
+  pinMode(encoder_right_pin2, INPUT); // pin #5 - encoder(B) from right motor
+  pinMode(encoder_left_pin1, INPUT);  // pin #6 - encoder(A) from left motor // TEST (_!_)
+  pinMode(encoder_left_pin2, INPUT);  // pin #7 - encoder(B) from left motor
   pinMode(8, OUTPUT);//in2 for motor1
   pinMode(9, OUTPUT);// enable motor2
   pinMode(10, INPUT);// button right
@@ -98,7 +99,7 @@ void setup() {
   pinMode(18, INPUT);// pinA4 // IR-sensor Right
   pinMode(19, INPUT);// pinA5 // IR-sensor Center
   pinMode(20, INPUT);// pinA6 // IR-sensor Left
-  pinMode(21, INPUT);
+//  pinMode(21, INPUT);
   pinMode(22, INPUT);
     
   Serial.begin(115200);
@@ -106,13 +107,16 @@ void setup() {
   mid_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
   right_sensor.setModel(SharpDistSensor::GP2Y0A51SK0F_5V_DS);
 
-//  right_encoder = CEncoder("RightWheel", encoder_right_pin1, encoder_right_pin2, 1.0, 1);  
   left_encoder = CEncoder("LeftWheel", encoder_left_pin1, encoder_left_pin2, 1.0, 1);
+  right_encoder = CEncoder("RightWheel", encoder_right_pin1, encoder_right_pin2, 1.0, 1);   // ошибка
+  
 
   moveModule = MoveModule(&left_encoder, &motorLeft, &motorRight);  
   moveModule.set_max_speed(MAX_WHEEL_SPEED);
 
 //  moveModule.move(10, 1.0);
+//  moveModule.move_forward();
+//moveModule.turn_right();
 
 }
 
@@ -148,11 +152,11 @@ void loop()
 //  motorLeft.goForward();
 //  motorRight.goForward();
 
-//  right_encoder.loop();
+  right_encoder.loop();
   left_encoder.loop();
 
   // Формирование показаний датчиков
-  read_sensor_data();
+//  read_sensor_data();
 //print_ir_raw_data();
 
 //  int d13 = digitalRead(13);
@@ -161,7 +165,7 @@ void loop()
 
 
   // вывод данных на ПК с определенной частотой
-  if (millis() - last_time > 1000)
+  if (millis() - last_time > 1)
   {
     last_time = millis();
 //    print_ir_raw_data();
@@ -181,30 +185,14 @@ void loop()
 //    Serial.println(loop_count);
     loop_count = 0;
 
-// движение по полосе
-    int leftLF = digitalRead(left_line_follower_pin);
-    int rightLF = digitalRead(right_line_follower_pin);
-  
-    Serial.print(leftLF);
-    Serial.print("\t");
-    Serial.println(rightLF);
-    moveModule.turn_left();
-  
-    if (leftLF == LOW && rightLF == LOW)
-      moveModule.move(10, 1.0);
-    else if (leftLF == HIGH && rightLF == HIGH)
-      moveModule.move_back(1, 1.0); 
-    else if (leftLF == LOW && rightLF == HIGH)
-      moveModule.turn_right();
-    else if (leftLF == HIGH && rightLF == LOW)
-      moveModule.turn_left();
+    move_by_line();
   
     moveModule.loop();
-    delay(100);
+//    delay(50);
   }
 
-  moveModule.hard_stop();
-  moveModule.loop();
+//  moveModule.hard_stop();
+//  moveModule.loop();
 
   return;
   
@@ -266,6 +254,64 @@ void read_sensor_data()
 #else
     right_dist = right_sensor.getDist()/10.0;
 #endif   
+}
+
+// движение по черной полосе
+void move_by_line()
+{
+  int leftLF = digitalRead(left_line_follower_pin);
+  int rightLF = digitalRead(right_line_follower_pin);
+
+//  Serial.print(leftLF);
+//  Serial.print("\t");
+//  Serial.println(rightLF);
+
+  if (leftLF == LOW && rightLF == LOW)
+  {
+    moveModule.move_forward();
+    last_move_cmd = MMD_FORWARD;
+    Serial.println("to FORWARD");
+    confused_threshold-=10;
+  }
+  else if (leftLF == HIGH && rightLF == HIGH)
+  {
+//    if (confused_threshold > 1000)
+//    {
+//      moveModule.move_forward();
+//      Serial.println("FORCE FORCE FORCE FORWARD");
+//      confused_threshold;
+//    }
+    if (last_move_cmd == MMD_TURN_RIGHT)
+    {
+      moveModule.turn_right(); 
+      last_move_cmd = MMD_TURN_RIGHT;
+      Serial.println("repeat RIGHT");
+      confused_threshold++;
+    }
+    else if (last_move_cmd == MMD_TURN_LEFT)
+    {
+      moveModule.turn_left(); 
+      last_move_cmd = MMD_TURN_LEFT;
+      Serial.println("repeat LEFT");
+      confused_threshold++;
+    }
+    else
+    { // произошло нечто неординарное
+      Serial.println("ЧЕРНАЯ ПОЛОСА ПОПЕРЕК");
+      }
+  }
+  else if (leftLF == LOW && rightLF == HIGH)
+  {
+    moveModule.turn_right();
+    last_move_cmd = MMD_TURN_RIGHT;
+    Serial.println("to RIGHT");
+  }
+  else if (leftLF == HIGH && rightLF == LOW)
+  {
+    moveModule.turn_left();
+    last_move_cmd = MMD_TURN_LEFT;
+    Serial.println("to LEFT");
+  }
 }
 
 void print_ir_dists()

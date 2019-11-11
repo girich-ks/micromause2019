@@ -65,6 +65,11 @@ void MoveModule::loop(){
     case MM_MOVE:{
       if (micros() - last_time < 50) return; // частота формирования СУ на моторы
       last_time = micros();
+      break;
+    }
+    case MM_MOVE_DIST:{
+      if (micros() - last_time < 50) return; // частота формирования СУ на моторы
+      last_time = micros();
       float dist_l = encoder->get_distance_from_pin1() - last_dist_l;
       float dist_r = encoder->get_distance_from_pin2() - last_dist_r;
       
@@ -153,7 +158,7 @@ void MoveModule::loop(){
 void MoveModule::move(double distance, double ascale){
   motorLeft->setSpeed(max_speed);
   motorRight->setSpeed(max_speed);
-  status = MM_MOVE;
+  status = MM_MOVE_DIST;
   motorLeft->goForward();
   stoper_l = true;
   motorRight->goForward();
@@ -164,7 +169,22 @@ void MoveModule::move(double distance, double ascale){
   last_time = micros();
   ready_flag = false;
   this->distance = distance;
-  Serial.println("MoveModule::move");
+}
+
+void MoveModule::move_forward()
+{
+  motorLeft->setSpeed(max_speed);
+  motorRight->setSpeed(max_speed);
+  status = MM_MOVE;
+  motorLeft->goForward();
+  stoper_l = true;
+  motorRight->goForward();
+  stoper_r = true;
+  last_dist_l = encoder->get_distance_from_pin1();
+  last_dist_r = encoder->get_distance_from_pin2();
+  scale = 1.0;
+  last_time = micros();
+  ready_flag = false;
 }
 
 void MoveModule::move_back(double distance, double ascale){
@@ -206,9 +226,10 @@ void MoveModule::hard_stop(){
 
 
 void MoveModule::rotate(double angle){
-  motorLeft->setSpeed(max_speed);
-  motorRight->setSpeed(max_speed);
+
   if (angle < 0){
+    motorLeft->setSpeed(max_speed / 2);
+    motorRight->setSpeed(max_speed);
     motorLeft->goBack();
     stoper_l = false;
     motorRight->goForward();
@@ -216,6 +237,8 @@ void MoveModule::rotate(double angle){
 //    motorRight->setSpeed(0);
   }
   else{
+    motorLeft->setSpeed(max_speed);
+    motorRight->setSpeed(max_speed / 2);
     motorRight->goBack();
     stoper_r = false;
     motorLeft->goForward();
@@ -245,11 +268,35 @@ void MoveModule::go_half(){
 }
 
 void MoveModule::turn_left(){
-  move(9.0, 0.36);
+  rotate_right();
+  return;
+  motorLeft->setSpeed(0);
+  motorRight->setSpeed(max_speed);
+  status = MM_MOVE;
+  motorLeft->goForward();
+  stoper_l = true;
+  motorRight->goForward();
+  stoper_r = true;
+  last_dist_l = encoder->get_distance_from_pin1();
+  last_dist_r = encoder->get_distance_from_pin2();
+  last_time = micros();
+  ready_flag = false;
 }
 
 void MoveModule::turn_right(){
-  move(3.0, 3.0);
+  rotate_left();
+  return;
+  motorLeft->setSpeed(max_speed);
+  motorRight->setSpeed(0);
+  status = MM_MOVE;
+  motorLeft->goForward();
+  stoper_l = true;
+  motorRight->goForward();
+  stoper_r = true;
+  last_dist_l = encoder->get_distance_from_pin1();
+  last_dist_r = encoder->get_distance_from_pin2();
+  last_time = micros();
+  ready_flag = false;
 }
 
 bool MoveModule::ready(){

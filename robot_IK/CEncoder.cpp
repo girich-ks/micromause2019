@@ -2,14 +2,19 @@
 
 
 CEncoder::CEncoder(String _name, int pin1, int pin2, float round_length, int point_count){
+// left_or_right = _name;
+// reset_values();
+// get_direction();
+// 
+// return;
   this->_pin1 = pin1;
   this->_pin2 = pin2;
   this->step_length = round_length / point_count;
   left_or_right = _name;
   last_time = 0;
   reset_values();
-  // pinMode(left_pin, INPUT);
-  // pinMode(right_pin, INPUT);
+   pinMode(pin1, INPUT);
+   pinMode(pin2, INPUT);
   last_state1 = digitalRead(pin1);
   last_state2 = digitalRead(pin2);
 
@@ -18,7 +23,7 @@ CEncoder::CEncoder(String _name, int pin1, int pin2, float round_length, int poi
 //  Serial.print(last_state1);
 //  Serial.print("\t&\t SECOND state is ");
 //  Serial.println(last_state2);
-  get_direction();
+//  get_direction();
 }
 
 // увеличивает счетчик переключений энкодера и рассчитывает скорость
@@ -84,6 +89,8 @@ void CEncoder::reset_values(){
 
 String  CEncoder::get_direction()
 {
+  Serial.print(left_or_right);
+  Serial.print("\t");
   if (rotate_direction == EED_FORWARD)
     Serial.println("FORWARD");
   else if (rotate_direction == EED_BACKWARD)
