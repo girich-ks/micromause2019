@@ -1,36 +1,38 @@
 // Motor.cpp
 
-#include "Arduino.h"
 #include "motor.h"
+
+#include "Arduino.h"
+
 //#include <cmath>
 
-void Motor::stopMotor() { // РѕСЃС‚Р°РЅРѕРІРёС‚СЊ РјРѕС‚РѕСЂ
-  if (Motor != MD_STOP) {
-    Motor = MD_STOP;
-    digitalWrite(Motor5_pin, 0);
+void Motor::stopMotor() { // остановить мотор
+  if (MotorDir != MD_STOP) {
+    MotorDir = MD_STOP;
+//    digitalWrite(Motor5_pin, 0);
     analogWrite(Motor6_pin, 0);
-    digitalWrite(Motor7_pin, 0);
-    digitalWrite(17, 0);
+//    digitalWrite(Motor7_pin, 0);
+//    digitalWrite(17, 0);
   }
 }
 void Motor::goForward() { // Р·Р°РїСѓСЃС‚РёС‚СЊ РјРѕС‚РѕСЂ РІРїРµСЂРµРґ
-  if (Motor != MD_FORWARD) {
-    Motor = MD_FORWARD;
+  if (MotorDir != MD_FORWARD) {
+    MotorDir = MD_FORWARD;
     digitalWrite(Motor5_pin, 0);
-//    analogWrite(Motor6_pin, speed);
+    analogWrite(Motor6_pin, speed);
     digitalWrite(Motor7_pin, 1);
-    digitalWrite(17, 1);
+//    digitalWrite(17, 1); зачем?
   }
 }
 
-void Motor::goBack() { // С„СѓРЅРєС†РёСЏ РґРІРёР¶РµРЅРёСЏ РЅР°Р·Р°Рґ
-  if (Motor != MD_BACK) {
-    Motor = MD_BACK;    
+void Motor::goBack() { // запустить мотор вперед
+  if (MotorDir != MD_BACK) {
+    MotorDir = MD_BACK;    
     digitalWrite(Motor5_pin, 1);
-//    analogWrite(Motor6_pin, speed);
+    analogWrite(Motor6_pin, speed);
     digitalWrite(Motor7_pin, 0);
     
-    digitalWrite(17, 1);
+//    digitalWrite(17, 1); зачем?
   }
 }
 
@@ -39,65 +41,20 @@ void Motor::setSpeed(byte aspeed){
   speed = aspeed;  
 }
 
-void Motor::getSpeed(){
+byte Motor::getSpeed(){
   return speed;
 }
 
-
-OptoPara::OptoPara(int left_pin, int right_pin, float round_length, int point_count){
-  this->left_pin = left_pin;
-  this->right_pin = right_pin;
-  this->step_length = round_length / point_count;
-  last_time = 0;
-  speed_l = 0;
-  speed_r = 0;
-  // pinMode(left_pin, INPUT);
-  // pinMode(right_pin, INPUT);
-  state_left = digitalRead(left_pin);
-  state_right = digitalRead(right_pin);
-}
-
-void OptoPara::loop(){
-  int cur_left = digitalRead(left_pin);
-  int cur_right = digitalRead(right_pin);
-  if (cur_left != state_left){
-    count_left++;
-    state_left = cur_left;  
-  }
-  if (cur_right != state_right){
-    count_right++;
-    state_right = cur_right;  
-  }
-  if (micros() - last_time > 100){
-    speed_l = get_distance_left()/0.0001;
-    speed_r = get_distance_right()/0.0001;
-    last_time = micros();
-  }
-}
-  
-float OptoPara::get_distance_left(){
-  return count_left*(0.079)*1.2;    
-}
-float OptoPara::get_distance_right(){
-  return count_right*0.079*1.2;  
-}
-
-void OptoPara::reset(){
-  count_left = 0;
-  count_right = 0;
-  speed_l = 0;
-  speed_r = 0;
-}
 
 void MoveModule::loop(){
   switch (status){
     case MM_STOP:{
       if (micros() - last_time < 40000) return;
       last_time = micros();
-      double speedl = optoPara->get_distance_left() - last_dist_l;
-      double speedr = optoPara->get_distance_right() - last_dist_r;
-      last_dist_l = optoPara->get_distance_left();
-      last_dist_r = optoPara->get_distance_right();
+      double speedl = encoder->get_distance_from_pin1() - last_dist_l;
+      double speedr = encoder->get_distance_from_pin2() - last_dist_r;
+      last_dist_l = encoder->get_distance_from_pin1();
+      last_dist_r = encoder->get_distance_from_pin2();
       // Serial.println(speedl);
       motorLeft->stopMotor();
       motorRight->stopMotor();
@@ -106,12 +63,19 @@ void MoveModule::loop(){
       break;
     }
     case MM_MOVE:{
-      if (micros() - last_time < 50) return;
+      if (micros() - last_time < 50) return; // частота формирования СУ на моторы
       last_time = micros();
-      double dist_l = optoPara->get_distance_left() - last_dist_l;
-      double dist_r = optoPara->get_distance_right() - last_dist_r;
+      float dist_l = encoder->get_distance_from_pin1() - last_dist_l;
+      float dist_r = encoder->get_distance_from_pin2() - last_dist_r;
+      
+//      Serial.print("otpopara: get_distance_left: ");
+//      Serial.println(encoder->get_distance_left());
+//      Serial.print(" & ");
+//      Serial.println(dist_r);
+//      
       if (dist_l >= distance && dist_r >= distance*scale){
         hard_stop();
+        Serial.println("MoveModule::HARD_STOP");
         return;
       }
       // if (dist_l > scale*dist_r){
@@ -125,13 +89,13 @@ void MoveModule::loop(){
       break;
     }
     case MM_ROTATE:{
-      Serial.print("MM_Rotate");
+//      Serial.print("MM_Rotate");
       if (micros() - last_time < 100) return;
       last_time = micros();
-      double dist_l = optoPara->get_distance_left();
-      double dist_r = optoPara->get_distance_right();
-      double speed_l = optoPara->speed_l;
-      double speed_r = optoPara->speed_r;
+      double dist_l = encoder->get_distance_from_pin1();
+      double dist_r = encoder->get_distance_from_pin2();
+      double speed_l = encoder->speed_l;
+      double speed_r = encoder->speed_r;
 
 //      Serial.print(dist_l);
 //      Serial.print("\t");
@@ -165,18 +129,18 @@ void MoveModule::loop(){
 //          }
 //          stoper_l = !stoper_l;
 //          stoper_r = !stoper_r;
-//          optoPara->reset();
+//          encoder->reset();
 //          last_time = micros();
 //          return;
 //        }
         return;
       }
       if (dist_l > dist_r){
-        motorLeft->setSpeed(max_speed/2);
+        motorLeft->setSpeed(max_speed/10);
         motorRight->setSpeed(max_speed);
       }
       if (dist_l < dist_r){
-        motorRight->setSpeed(max_speed/2);
+        motorRight->setSpeed(max_speed/10);
         motorLeft->setSpeed(max_speed);
       }
       break;
@@ -194,12 +158,13 @@ void MoveModule::move(double distance, double ascale){
   stoper_l = true;
   motorRight->goForward();
   stoper_r = true;
-  last_dist_l = optoPara->get_distance_left();
-  last_dist_r = optoPara->get_distance_right();
+  last_dist_l = encoder->get_distance_from_pin1();
+  last_dist_r = encoder->get_distance_from_pin2();
   scale = ascale;
   last_time = micros();
   ready_flag = false;
   this->distance = distance;
+  Serial.println("MoveModule::move");
 }
 
 void MoveModule::move_back(double distance, double ascale){
@@ -209,8 +174,8 @@ void MoveModule::move_back(double distance, double ascale){
   stoper_l = false;
   motorRight->goBack();
   stoper_r = false;
-  last_dist_l = optoPara->get_distance_left();
-  last_dist_r = optoPara->get_distance_right();
+  last_dist_l = encoder->get_distance_from_pin1();
+  last_dist_r = encoder->get_distance_from_pin2();
   scale = ascale;
   last_time = micros();
   ready_flag = false;
@@ -218,25 +183,25 @@ void MoveModule::move_back(double distance, double ascale){
 }
 
 void MoveModule::hard_stop(){
-  last_dist_l = optoPara->get_distance_left();
-  last_dist_r = optoPara->get_distance_right();
+  last_dist_l = encoder->get_distance_from_pin1();
+  last_dist_r = encoder->get_distance_from_pin2();
   // last
   ready_flag = false;
   status = MM_STOP;
-  if (stoper_l){
-    motorLeft->goBack();
-  }
-  else{
-    motorLeft->goForward();
-  }
-  if (stoper_r){
-    motorRight->goBack();
-  }
-  else{
-    motorRight->goForward();
-  }
-  motorLeft->setSpeed(max_speed);
-  motorRight->setSpeed(max_speed);
+//  if (stoper_l){
+//    motorLeft->goBack();
+//  }
+//  else{
+//    motorLeft->goForward();
+//  }
+//  if (stoper_r){
+//    motorRight->goBack();
+//  }
+//  else{
+//    motorRight->goForward();
+//  }
+//  motorLeft->setSpeed(max_speed);
+//  motorRight->setSpeed(max_speed);
 }
 
 
@@ -257,7 +222,7 @@ void MoveModule::rotate(double angle){
     stoper_l = true;
 //    motorLeft->setSpeed(0);
   }
-  optoPara->reset();
+  encoder->reset_values();
   scale = 1.0;
   last_time = micros();
   ready_flag = false;
@@ -267,11 +232,11 @@ void MoveModule::rotate(double angle){
 }
 
 void MoveModule::rotate_left(){
-  set_max_speed(190);
+  set_max_speed(max_speed);
   rotate(95.0);
 }
 void MoveModule::rotate_right(){
-  set_max_speed(190);
+  set_max_speed(max_speed);
   rotate(-95.0);
 }
 
@@ -290,4 +255,3 @@ void MoveModule::turn_right(){
 bool MoveModule::ready(){
   return ready_flag;
 }
-
